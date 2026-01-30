@@ -108,7 +108,7 @@ Two API routes; storage required from day one.
 ### Storage (required)
 
 - **Vercel Blob** or **KV**: Store raw + derived so both fetch and chat use the same data. Blob: e.g. one JSON file per key (`global.json`, `topCoins.json`, `bitcoinChart.json`, `derived.json`) or a single `data.json`. KV: keys like `crypto:global`, `crypto:topCoins`, `crypto:bitcoinChart`, `crypto:derived`. Env: `BLOB_READ_WRITE_TOKEN` (Blob) or KV env vars from Vercel integration.
-- **Env**: `OPENAI_API_KEY`, `COINGECKO_DEMO_API_KEY`, and storage token/credentials from day one.
+- **Env**: `OPENAI_API_KEY`, and storage token/credentials from day one.
 - **Config**: `vercel.json` with Vite build + output `dist`; `api/*.ts` are serverless functions. Set `maxDuration` on `api/fetch` and `api/chat` if needed (e.g. 30s for fetch).
 
 ---

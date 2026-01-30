@@ -9,6 +9,8 @@ type DeleteStatus = 'idle' | 'confirm' | 'loading' | 'success' | 'error'
 interface FetchResponse {
   ok: boolean
   persistEnabled?: boolean
+  persistSkipped?: boolean
+  persistSkipReason?: string
   results?: { key: string; status: number; isOk: boolean; error?: string }[]
   data?: Record<string, unknown>
 }
@@ -31,15 +33,19 @@ export default function FetchDataPage() {
       const text = await res.text()
       if (res.ok) {
         setRefreshStatus('success')
-        setRefreshMessage('Data refreshed.')
         try {
           const body: FetchResponse = JSON.parse(text)
+          if (body.persistSkipped && body.persistSkipReason) {
+            setRefreshMessage(`Data refreshed. Persistence skipped: ${body.persistSkipReason}`)
+          } else {
+            setRefreshMessage('Data refreshed.')
+          }
           if (body.data && Object.keys(body.data).length > 0) {
             setFetchedData(body.data)
             setExpandedKey(Object.keys(body.data)[0] ?? null)
           }
         } catch {
-          // ignore parse error; success message already set
+          setRefreshMessage('Data refreshed.')
         }
       } else {
         setRefreshStatus('error')

@@ -8,6 +8,7 @@
     { "source": "/cryptochat/data", "destination": "/index.html" }
   ],
   "functions": {
-    "api/fetch.ts": { "maxDuration": 60, "includeFiles": "lib/**" }
+    "api/fetch.ts": { "maxDuration": 60 },
+    "api/chat.ts": { "maxDuration": 30 }
   }
 }

@@ -1,10 +1,10 @@
-/* /lib/fetchConfig.ts
+/**
  * Fetch config: URL list and behavior constants.
- * Pure data only; no I/O. Order of FETCH_SOURCES is the fetch order (sequential).
+ * Pure data only; no I/O. Used by api/ handlers (api/_lib so Vercel nft traces it).
  */
 
 /** Pause in ms between requests to the same hostname (vendor). Use 0 for no pause. */
-export const PAUSE_MS_BETWEEN_SAME_VENDOR = 15000;  // free layer, no api key, have to be patient
+export const PAUSE_MS_BETWEEN_SAME_VENDOR = 15000;
 
 export interface FetchSource {
   key: string;

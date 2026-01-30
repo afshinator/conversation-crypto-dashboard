@@ -1,9 +1,15 @@
 /**
  * Tests for api/fetch.ts POST handler: method check, response shape, fetch usage, data in response.
- * Handler is self-contained; we stub global fetch.
+ * We stub global fetch and mock @vercel/blob (put) so no real Blob calls.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+const mockPut = vi.fn()
+vi.mock('@vercel/blob', () => ({
+  put: (...args: unknown[]) => mockPut(...args),
+}))
+
 import { POST } from '../../api/fetch'
 
 const realFetch = globalThis.fetch
@@ -11,11 +17,15 @@ const realFetch = globalThis.fetch
 describe('api/fetch POST', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
+    mockPut.mockResolvedValue(undefined)
     process.env.PAUSE_MS_BETWEEN_SAME_VENDOR = '0'
+    process.env.BLOB_READ_WRITE_TOKEN = 'test-token'
   })
   afterEach(() => {
     vi.stubGlobal('fetch', realFetch)
+    mockPut.mockReset()
     delete process.env.PAUSE_MS_BETWEEN_SAME_VENDOR
+    delete process.env.BLOB_READ_WRITE_TOKEN
   })
 
   it('returns 405 and Method not allowed for non-POST', async () => {
@@ -59,7 +69,7 @@ describe('api/fetch POST', () => {
     const body = await response.json()
     expect(body).toMatchObject({
       ok: true,
-      persistEnabled: false,
+      persistEnabled: true,
       results: [
         { key: 'global', status: 200, isOk: true },
         { key: 'topCoins', status: 200, isOk: true },
@@ -71,6 +81,39 @@ describe('api/fetch POST', () => {
         bitcoinChart: { foo: 'bar' },
       },
     })
+    expect(mockPut).toHaveBeenCalledTimes(4)
+    expect(mockPut).toHaveBeenNthCalledWith(1, 'crypto/global.json', '{"foo":"bar"}', expect.any(Object))
+    expect(mockPut).toHaveBeenNthCalledWith(2, 'crypto/topCoins.json', '{"foo":"bar"}', expect.any(Object))
+    expect(mockPut).toHaveBeenNthCalledWith(3, 'crypto/bitcoinChart.json', '{"foo":"bar"}', expect.any(Object))
+    const derivedCall = mockPut.mock.calls[3]
+    const derived = JSON.parse(derivedCall[1])
+    expect(derived).toMatchObject({
+      fromGlobal: expect.any(Object),
+      fromBitcoinChart: expect.any(Object),
+      fromTopCoins: expect.any(Object),
+      computedAt: expect.any(Number),
+    })
+  })
+
+  it('skips persist and returns persistSkipped when BLOB_READ_WRITE_TOKEN is not set', async () => {
+    delete process.env.BLOB_READ_WRITE_TOKEN
+    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ foo: 'bar' }),
+    })
+    const request = new Request('http://localhost/api/fetch', { method: 'POST' })
+    const response = await POST(request)
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body).toMatchObject({
+      ok: true,
+      persistEnabled: true,
+      persistSkipped: true,
+      persistSkipReason: expect.stringContaining('BLOB_READ_WRITE_TOKEN'),
+    })
+    expect(mockPut).not.toHaveBeenCalled()
   })
 
   it('returns 500 with ok false when at least one request fails', async () => {
