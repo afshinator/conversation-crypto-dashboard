@@ -13,6 +13,9 @@ const mockGenerateText = vi.fn()
 vi.mock('ai', () => ({
   generateText: (...args: unknown[]) => mockGenerateText(...args),
 }))
+vi.mock('../../api/auth', () => ({
+  isAuthenticated: () => true,
+}))
 
 import { POST } from '../../api/chat'
 

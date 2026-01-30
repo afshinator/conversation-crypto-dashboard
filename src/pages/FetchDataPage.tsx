@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
+import type { AuthOutletContext } from './ChatPage'
 
 const API_NOT_IMPLEMENTED = 'API not implemented or server not running'
 
@@ -16,6 +17,7 @@ interface FetchResponse {
 }
 
 export default function FetchDataPage() {
+  const { logout } = useOutletContext<AuthOutletContext>() ?? {}
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle')
   const [refreshMessage, setRefreshMessage] = useState('')
   const [fetchedData, setFetchedData] = useState<Record<string, unknown> | null>(null)
@@ -85,6 +87,7 @@ export default function FetchDataPage() {
       <nav className="page-nav">
         <Link to="/">Home</Link>
         <Link to="/cryptochat">Chat</Link>
+        {logout && <button type="button" onClick={logout} className="nav-logout">Log out</button>}
       </nav>
       <h1>Data (introspect &amp; refresh)</h1>
 

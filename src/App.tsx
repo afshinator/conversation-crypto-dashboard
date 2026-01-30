@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Frontpage from './pages/Frontpage'
+import AuthGuard from './components/AuthGuard'
 import ChatPage from './pages/ChatPage'
 import FetchDataPage from './pages/FetchDataPage'
 import './App.css'
@@ -9,8 +10,10 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Frontpage />} />
-        <Route path="/cryptochat" element={<ChatPage />} />
-        <Route path="/cryptochat/data" element={<FetchDataPage />} />
+        <Route path="/cryptochat" element={<AuthGuard />}>
+          <Route index element={<ChatPage />} />
+          <Route path="data" element={<FetchDataPage />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   )

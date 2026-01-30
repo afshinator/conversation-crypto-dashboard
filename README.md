@@ -51,7 +51,7 @@ All answers are based on the most recently fetched data snapshot.
 
 ## Getting Started
 
-1. Set environment variables: `OPENAI_API_KEY`, `BLOB_READ_WRITE_TOKEN` (see Local development below).
+1. Set environment variables: `OPENAI_API_KEY`, `BLOB_READ_WRITE_TOKEN`, `APP_PASSWORD` (see Local development below). The dashboard at `/cryptochat` is protected by the password gate.
 2. Run `npx vercel dev`, then open the app (e.g. http://localhost:3000).
 3. Go to **Data** (`/cryptochat/data`) and click **Refresh data** to load and persist market data.
 4. Go to **Chat** (`/cryptochat`) and ask questions (e.g. “What’s BTC dominance?”, “Is Bitcoin in a golden cross?”).
@@ -102,17 +102,22 @@ To run the app like Vercel locally (Vite app + serverless API routes in `api/`),
 
    This serves the Vite app and runs your `api/*` handlers. The URL is usually **http://localhost:3000** (Vercel dev default).
 
-3. **Env vars** (for `OPENAI_API_KEY`, `BLOB_READ_WRITE_TOKEN`, etc.):
+3. **Env vars** (for `OPENAI_API_KEY`, `BLOB_READ_WRITE_TOKEN`, `APP_PASSWORD`, etc.):
 
-   ```shell
-   npx vercel env pull .env.local
-   ```
+   **Vercel dev injects env from your Vercel project, not only from `.env.local`.** So:
 
-   That pulls your Vercel project env into `.env.local` so the API routes can use them locally. Add `.env.local` to `.gitignore` if it is not already there.
+   1. In the [Vercel Dashboard](https://vercel.com/dashboard), open your project → **Settings** → **Environment Variables**.
+   2. Add each variable (e.g. `APP_PASSWORD`, `OPENAI_API_KEY`, `BLOB_READ_WRITE_TOKEN`) and scope it to **Development** (and Production if you deploy).
+   3. Locally, run:
+      ```shell
+      npx vercel env pull .env.local
+      ```
+      That syncs the project’s env into `.env.local`. Add `.env.local` to `.gitignore` if it is not already there.
+   4. Restart `vercel dev` (Ctrl+C, then `npx vercel dev` again).
 
-   **If you add or change `.env.local`:** restart `vercel dev` (stop it with Ctrl+C, then run `npx vercel dev` again) so the API process picks up the new variables. The API only runs when you use `vercel dev`—not when you use `npm run dev` (Vite only).
+   **If you only add a variable to `.env.local` by hand** (without adding it in the Vercel project and running `vercel env pull`), the API routes may still see it as unset, because `vercel dev` can inject env from the project rather than re-reading `.env.local` for the serverless process.
 
-   **"OPENAI_API_KEY not configured" or "BLOB_READ_WRITE_TOKEN not set":** (1) Use `npx vercel dev` (not `npm run dev`) so the API runs. (2) Restart `vercel dev` after adding or editing the variable in `.env.local`. (3) Variable names must be exactly `OPENAI_API_KEY` and `BLOB_READ_WRITE_TOKEN`.
+   **"APP_PASSWORD not configured" / "OPENAI_API_KEY not configured" / "BLOB_READ_WRITE_TOKEN not set":** (1) Add the variable in Vercel Dashboard (Development). (2) Run `npx vercel env pull .env.local`. (3) Restart `npx vercel dev`. (4) Use `npx vercel dev` (not `npm run dev`) so the API runs.
 
 ### Storage (Vercel Blob)
 

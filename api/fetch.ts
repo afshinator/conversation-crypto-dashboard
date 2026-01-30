@@ -5,6 +5,7 @@
 /// <reference types="node" />
 
 import { put } from '@vercel/blob';
+import { isAuthenticated } from './auth';
 
 // --- Fetch config ---
 const DEFAULT_PAUSE_MS_BETWEEN_SAME_VENDOR = 15000;
@@ -162,6 +163,9 @@ function computeDerived(
 export async function POST(request: Request): Promise<Response> {
   if (request.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
+  }
+  if (!isAuthenticated(request)) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {

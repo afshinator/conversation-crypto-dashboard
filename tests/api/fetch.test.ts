@@ -9,6 +9,9 @@ const mockPut = vi.fn()
 vi.mock('@vercel/blob', () => ({
   put: (...args: unknown[]) => mockPut(...args),
 }))
+vi.mock('../../api/auth', () => ({
+  isAuthenticated: () => true,
+}))
 
 import { POST } from '../../api/fetch'
 

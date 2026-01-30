@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
+
+export type AuthOutletContext = { logout: () => void }
 
 type Message = { role: 'user' | 'assistant'; content: string }
 
 export default function ChatPage() {
+  const { logout } = useOutletContext<AuthOutletContext>() ?? {}
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -54,6 +57,7 @@ export default function ChatPage() {
       <nav className="page-nav">
         <Link to="/">Home</Link>
         <Link to="/cryptochat/data">Data</Link>
+        {logout && <button type="button" onClick={logout} className="nav-logout">Log out</button>}
       </nav>
       <h1>Crypto-Chat</h1>
       <p className="chat-intro">Ask questions about the persisted crypto data. Fetch data first from the Data page if you haven’t.</p>

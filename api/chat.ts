@@ -7,6 +7,7 @@
 import { list } from '@vercel/blob';
 import { generateText } from 'ai';
 import { openai } from '@ai-sdk/openai';
+import { isAuthenticated } from './auth';
 
 const STORAGE_PREFIX = 'crypto';
 
@@ -63,6 +64,9 @@ function buildContext(derived: Record<string, unknown> | null, globalRaw: unknow
 export async function POST(request: Request): Promise<Response> {
   if (request.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
+  }
+  if (!isAuthenticated(request)) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   if (!process.env.OPENAI_API_KEY) {
