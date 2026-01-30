@@ -6,22 +6,41 @@ const API_NOT_IMPLEMENTED = 'API not implemented or server not running'
 type RefreshStatus = 'idle' | 'loading' | 'success' | 'error'
 type DeleteStatus = 'idle' | 'confirm' | 'loading' | 'success' | 'error'
 
+interface FetchResponse {
+  ok: boolean
+  persistEnabled?: boolean
+  results?: { key: string; status: number; isOk: boolean; error?: string }[]
+  data?: Record<string, unknown>
+}
+
 export default function FetchDataPage() {
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle')
   const [refreshMessage, setRefreshMessage] = useState('')
+  const [fetchedData, setFetchedData] = useState<Record<string, unknown> | null>(null)
   const [deleteStatus, setDeleteStatus] = useState<DeleteStatus>('idle')
   const [deleteMessage, setDeleteMessage] = useState('')
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
 
   async function handleRefresh() {
     setRefreshStatus('loading')
     setRefreshMessage('')
+    setFetchedData(null)
     try {
       const res = await fetch('/api/fetch', { method: 'POST' })
       const text = await res.text()
       if (res.ok) {
         setRefreshStatus('success')
-        setRefreshMessage(text || 'Data refreshed.')
+        setRefreshMessage('Data refreshed.')
+        try {
+          const body: FetchResponse = JSON.parse(text)
+          if (body.data && Object.keys(body.data).length > 0) {
+            setFetchedData(body.data)
+            setExpandedKey(Object.keys(body.data)[0] ?? null)
+          }
+        } catch {
+          // ignore parse error; success message already set
+        }
       } else {
         setRefreshStatus('error')
         setRefreshMessage(res.status === 404 ? API_NOT_IMPLEMENTED : text || `Error ${res.status}`)
@@ -102,9 +121,9 @@ export default function FetchDataPage() {
                 <button
                   type="button"
                   onClick={handleDelete}
-                  disabled={!deleteConfirmed || deleteStatus === 'loading'}
+                  disabled={!deleteConfirmed}
                 >
-                  {deleteStatus === 'loading' ? 'Deleting…' : 'Confirm delete'}
+                  Confirm delete
                 </button>
                 <button
                   type="button"
@@ -119,14 +138,35 @@ export default function FetchDataPage() {
               </div>
             </div>
           )}
+          {deleteStatus === 'loading' && <p className="status loading">Deleting…</p>}
           {deleteStatus === 'success' && <p className="status success">{deleteMessage}</p>}
           {deleteStatus === 'error' && <p className="status error">{deleteMessage}</p>}
         </div>
       </section>
 
-      <section className="data-accordion-placeholder">
-        <h2>Stored data by endpoint</h2>
-        <p className="muted">Collapsible accordion per endpoint will go here. No data loaded yet (or API not implemented).</p>
+      <section className="data-accordion">
+        <h2>Fetched data by endpoint</h2>
+        {fetchedData && Object.keys(fetchedData).length > 0 ? (
+          <div className="accordion-list">
+            {Object.keys(fetchedData).map((key) => (
+              <div key={key} className="accordion-item">
+                <button
+                  type="button"
+                  className="accordion-heading"
+                  onClick={() => setExpandedKey((k) => (k === key ? null : key))}
+                >
+                  {key}
+                  <span className="accordion-toggle">{expandedKey === key ? '−' : '+'}</span>
+                </button>
+                {expandedKey === key && (
+                  <pre className="accordion-body">{JSON.stringify(fetchedData[key], null, 2)}</pre>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">Refresh data to see a quick look here. No data loaded yet (or API not implemented).</p>
+        )}
       </section>
     </div>
   )
