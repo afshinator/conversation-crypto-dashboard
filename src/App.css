@@ -2,41 +2,103 @@
   max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
+  min-height: 100vh;
+}
+
+/* Frontpage */
+.frontpage {
   text-align: center;
 }
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
+.frontpage-nav {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1.5rem;
 }
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.frontpage-nav a {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid currentColor;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+/* Page nav (Chat, Data pages) */
+.page-nav {
+  margin-bottom: 1.5rem;
+}
+.page-nav a {
+  margin-right: 1rem;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+/* Fetch data page */
+.fetch-data-page h1 {
+  margin-bottom: 1rem;
 }
-
-.card {
-  padding: 2em;
+.fetch-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
 }
-
-.read-the-docs {
+.status-block button {
+  margin-right: 0.5rem;
+}
+.status-block .status.loading {
   color: #888;
+}
+.status-block .status.success {
+  color: #0a0;
+}
+.status-block .status.error {
+  color: #c00;
+}
+.delete-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.delete-confirm label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: left;
+}
+.delete-confirm input {
+  max-width: 12rem;
+  padding: 0.4rem 0.6rem;
+  font-family: inherit;
+  border-radius: 6px;
+  border: 1px solid #666;
+}
+.delete-confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.data-accordion-placeholder {
+  margin-top: 2rem;
+  padding: 1rem;
+  border: 1px dashed #666;
+  border-radius: 8px;
+}
+.data-accordion-placeholder h2 {
+  font-size: 1.2rem;
+  margin-bottom: 0.5rem;
+}
+.muted {
+  color: #888;
+  font-size: 0.95rem;
+}
+
+@media (prefers-color-scheme: light) {
+  .status-block .status.success {
+    color: #060;
+  }
+  .status-block .status.error {
+    color: #b00;
+  }
+  .delete-confirm input {
+    border-color: #999;
+  }
+  .data-accordion-placeholder {
+    border-color: #999;
+  }
 }
