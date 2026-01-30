@@ -55,7 +55,7 @@ export default function ChatPage() {
         <Link to="/">Home</Link>
         <Link to="/cryptochat/data">Data</Link>
       </nav>
-      <h1>Chat</h1>
+      <h1>Crypto-Chat</h1>
       <p className="chat-intro">Ask questions about the persisted crypto data. Fetch data first from the Data page if you haven’t.</p>
 
       <section className="chat-messages">

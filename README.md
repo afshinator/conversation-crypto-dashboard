@@ -2,6 +2,7 @@
 
 ### A proof-of-concept demonstrating how to build an LLM-powered assistant informed by real-time cryptocurrency market data.
 
+<p align="center"><img src="src/assets/screenshot.png" alt="Screenshot" /></p>
 
 ## What This POC Demonstrates
 
@@ -50,12 +51,10 @@ All answers are based on the most recently fetched data snapshot.
 
 ## Getting Started
 
-1. Set environment variables: `COINGECKO_DEMO_API_KEY`, `OPENAI_API_KEY`, `BLOB_READ_WRITE_TOKEN`, `APP_PASSWORD`
-2. Navigate to `/cryptochat`
-3. Click "Fetch data" to load current market data
-4. Ask questions in the chat interface
-
-Protected by a simple password gate to prevent unauthorized API usage.
+1. Set environment variables: `OPENAI_API_KEY`, `BLOB_READ_WRITE_TOKEN` (see Local development below).
+2. Run `npx vercel dev`, then open the app (e.g. http://localhost:3000).
+3. Go to **Data** (`/cryptochat/data`) and click **Refresh data** to load and persist market data.
+4. Go to **Chat** (`/cryptochat`) and ask questions (e.g. “What’s BTC dominance?”, “Is Bitcoin in a golden cross?”).
 
 
 
