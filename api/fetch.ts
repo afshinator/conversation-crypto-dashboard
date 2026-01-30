@@ -1,81 +1,31 @@
 /**
  * Fetch route: runs through configured sources, optional pause between same vendor, optional persist.
- * Config at top; no magic numbers in logic. Self-contained (no imports from lib) so Vercel can run it.
- * Uses Vercel Web Handler (Request / Response).
+ * Config at top; no magic numbers in logic.
+ * Uses Vercel Web Handler (Request / Response). Shared logic in root lib/ (see vercel.json includeFiles).
  */
 /// <reference types="node" />
 
-// --- Fetch config (inlined so no module resolution in serverless) ---
-/** Default pause in ms between same hostname. Set env PAUSE_MS_BETWEEN_SAME_VENDOR=0 in tests to skip. */
-const DEFAULT_PAUSE_MS_BETWEEN_SAME_VENDOR = 15000;
+import {
+  FETCH_SOURCES,
+  PAUSE_MS_BETWEEN_SAME_VENDOR,
+  getHostnameFromUrl,
+} from '../lib/fetchConfig';
+import { HttpClient, HTTP_STATUS } from '../lib/httpClient';
+
+// --- Route config (change here or via env) ---
+/** When false, fetched payloads are not written to storage; runner still runs. */
+const PERSIST_FETCHED_DATA = false;
+/** When true, include fetched payloads in the API response so the data page can display them. */
+const INCLUDE_DATA_IN_RESPONSE = true;
+/** Timeout in ms for each outbound request. */
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/** Set env PAUSE_MS_BETWEEN_SAME_VENDOR=0 in tests to skip pause. */
 function getPauseMs(): number {
   return process.env.PAUSE_MS_BETWEEN_SAME_VENDOR !== undefined
     ? Number(process.env.PAUSE_MS_BETWEEN_SAME_VENDOR)
-    : DEFAULT_PAUSE_MS_BETWEEN_SAME_VENDOR;
+    : PAUSE_MS_BETWEEN_SAME_VENDOR;
 }
-const FETCH_SOURCES: { key: string; url: string }[] = [
-  { key: 'global', url: 'https://api.coingecko.com/api/v3/global' },
-  {
-    key: 'topCoins',
-    url: 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=200&page=1&sparkline=false&price_change_percentage=24h,7d,30d',
-  },
-  {
-    key: 'bitcoinChart',
-    url: 'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=200',
-  },
-];
-function getHostnameFromUrl(url: string): string {
-  return new URL(url).hostname;
-}
-
-// --- HTTP client (inlined) ---
-const HTTP_STATUS_OK = 200;
-const HTTP_STATUS_SERVER_ERROR = 500;
-const DEFAULT_TIMEOUT_MS = 30_000;
-
-async function httpRequest<T>(
-  url: string,
-  options: { timeout?: number } = {}
-): Promise<{ data: T | null; status: number; isOk: boolean; error?: string }> {
-  const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    let data: unknown = null;
-    try {
-      data = await response.json();
-    } catch {
-      data = null;
-    }
-    return {
-      data: data as T,
-      status: response.status,
-      isOk: response.ok,
-      error: !response.ok ? `HTTP ${response.status}: ${response.statusText || 'Request failed'}` : undefined,
-    };
-  } catch (err: unknown) {
-    clearTimeout(timeoutId);
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      data: null,
-      status: 0,
-      isOk: false,
-      error: message,
-    };
-  }
-}
-
-// --- Route config ---
-const PERSIST_FETCHED_DATA = false;
-const INCLUDE_DATA_IN_RESPONSE = true;
-const REQUEST_TIMEOUT_MS = 30_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -101,7 +51,7 @@ export async function POST(request: Request): Promise<Response> {
       }
       lastHostname = hostname;
 
-      const response = await httpRequest<unknown>(source.url, {
+      const response = await HttpClient.request<unknown>(source.url, {
         timeout: REQUEST_TIMEOUT_MS,
       });
 
@@ -128,7 +78,7 @@ export async function POST(request: Request): Promise<Response> {
       ...(INCLUDE_DATA_IN_RESPONSE && Object.keys(data).length > 0 && { data }),
     };
     return Response.json(body, {
-      status: allOk ? HTTP_STATUS_OK : HTTP_STATUS_SERVER_ERROR,
+      status: allOk ? HTTP_STATUS['OK-200'] : HTTP_STATUS['SERVER_ERROR-500'],
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
