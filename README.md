@@ -18,6 +18,17 @@ This application shows a simple architecture for building AI assistants that wor
 
 **The result: An AI crypto analyst that answers questions like "Is Bitcoin in a golden cross?" or "What's the current BTC dominance?" based on real data, not training knowledge.**
 
+
+## Summary of the Workflow
+
+   - User Action: Sends a message (e.g., "What is the BTC trend?").
+   - App Action: Fetches the latest crypto stats from your storage.
+   - Formatting: Turns those numbers into a list of sentences.
+   - AI Call: Sends the list + the user's question to OpenAI.
+   - Response: OpenAI returns a text answer based only on that data.
+
+
+
 ## Key Architecture Decisions
 
 **Two Separate Flows:**
@@ -39,6 +50,80 @@ Text-only responses for initial launch. The architecture supports future enhance
 - Trend analysis ("What's the 24-hour volume ratio?")
 
 All answers are based on the most recently fetched data snapshot.
+
+## Role of the `systemPrompt`
+
+In the context of an LLM, the systemPrompt is the operating system of the conversation.  It is extremely important — not just for the "vibe" of the AI, but for the accuracy of the data it provides.
+
+1. The "Grounded" Constraint
+
+   In the code currently:
+
+    **"Use ONLY the following persisted data to answer. Do not use live data or external knowledge beyond this snapshot."**
+
+   This is a **guardrail**. Without this exact phrasing, if a user asks "What is the price of Bitcoin?", GPT might use its training data from six months ago or try to guess. By being strict, we force the AI to behave like a UI component that only reads the provided JSON.
+
+2. Preventing "Hallucinations"
+
+   Phrasing like **"If the data does not contain what the user asks for, say so briefly"** is a **safety switch**.
+
+    Bad Phrasing: "Answer the user's questions about crypto." (The AI might make up a price if it's missing from your blob).
+
+    Your Phrasing: **Forces the AI to admit ignorance rather than lying**, which is vital when dealing with financial data.
+
+3. Formatting and Token Efficiency
+
+   The way we've built the context string (using bullet points and clear labels) makes it easier for the model to "parse" the data.
+
+    LLMs find structured lists (like the ones generated in the buildContext function) much easier to navigate than a raw, messy JSON dump.
+
+    Clear phrasing helps the model distinguish between derived metrics (like the Moving Average) and raw metrics (like total market cap).
+
+
+
+## TODO, Notes, and Fiddling around...
+
+#### If the AI is still "wandering" or giving too much advice, we can tighten the phrasing further:
+
+      Current phrasing: "You are a crypto market analyst."
+
+      - Change to: "You are a data retrieval assistant." (If you want it to be less 'chatty' and more factual).
+
+      Current phrasing: "answer... briefly"
+
+      - Change to: "Answer in 2 sentences max." (To save on OpenAI costs and keep the UI clean).
+
+      Can also add:  "Always start your answer with the timestamp of the data provided." (To ensure the user knows the data might be stale)
+
+
+### Notes on model choice and amount of context provided
+
+    Theoretical Limit: gpt-4o-mini has a context window of 128,000 tokens (roughly 90,000+ words). The 3 fetches likely total less than 2,000 tokens. We could technically increase data load by 50x before the API would even throw an error.
+
+    Practical Limit (The "U-Shaped" Curve): Research shows that **LLMs suffer from "Lost in the Middle."** As the context grows, they become very good at remembering the very beginning and very end of your prompt, but they start to overlook details buried in the middle. 
+    
+    **Performance usually starts to degrade noticeably after 32,000 to 64,000 tokens.**
+
+
+### How to Monitor "Token Pressure"
+
+```
+const { text, usage } = await generateText({   // add the usage prop
+  model: openai('gpt-4o-mini'),
+  system: systemPrompt,
+  prompt: message,
+});
+
+// Gauging the load:
+console.log(`Prompt used ${usage.promptTokens} tokens.`);
+console.log(`That is ${(usage.promptTokens / 128000 * 100).toFixed(2)}% of the limit.`);
+```
+
+The Fix for Overloading: If we ever reach that point, the standard solution is RAG (Retrieval-Augmented Generation). Instead of feeding all 200 coins to the AI, you would use a search tool to only feed it the data for the specific coins the user mentioned.
+
+Idea: You can add a "Token Counter" to your UI so you can see exactly how much "space" each fetch is taking up.
+
+
 
 ## Tech Stack
 
