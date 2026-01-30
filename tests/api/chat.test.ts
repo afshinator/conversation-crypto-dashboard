@@ -22,7 +22,14 @@ import { POST } from '../../api/chat'
 describe('api/chat POST', () => {
   beforeEach(() => {
     process.env.OPENAI_API_KEY = 'test-key'
-    mockGenerateText.mockResolvedValue({ text: 'Mocked reply.' })
+    mockGenerateText.mockResolvedValue({
+      text: 'Mocked reply.',
+      usage: {
+        inputTokens: 100,
+        outputTokens: 20,
+        totalTokens: 120,
+      },
+    })
   })
   afterEach(() => {
     delete process.env.OPENAI_API_KEY
@@ -126,6 +133,7 @@ describe('api/chat POST', () => {
     expect(response.status).toBe(200)
     const body = await response.json()
     expect(body.text).toBe('Mocked reply.')
+    expect(body.usage).toEqual({ promptTokens: 100, completionTokens: 20, totalTokens: 120 })
     expect(mockGenerateText).toHaveBeenCalledTimes(1)
     expect(mockGenerateText.mock.calls[0][0].prompt).toBe('What is BTC dominance?')
     expect(mockGenerateText.mock.calls[0][0].system).toMatch(/crypto|data|analyst/i)

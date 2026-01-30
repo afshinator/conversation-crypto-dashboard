@@ -114,14 +114,13 @@ const { text, usage } = await generateText({   // add the usage prop
   prompt: message,
 });
 
-// Gauging the load:
-console.log(`Prompt used ${usage.promptTokens} tokens.`);
-console.log(`That is ${(usage.promptTokens / 128000 * 100).toFixed(2)}% of the limit.`);
+// Usage is returned from generateText and sent to the UI:
+// { text, usage: { promptTokens, completionTokens, totalTokens } }
 ```
 
-The Fix for Overloading: If we ever reach that point, the standard solution is RAG (Retrieval-Augmented Generation). Instead of feeding all 200 coins to the AI, you would use a search tool to only feed it the data for the specific coins the user mentioned.
+The chat UI includes a **Token Counter** that shows per-response and session totals (prompt, completion, total) and the prompt’s share of the 128k context. Per-response usage appears under each assistant reply.
 
-Idea: You can add a "Token Counter" to your UI so you can see exactly how much "space" each fetch is taking up.
+**If we ever overload the context:** the standard solution is RAG (Retrieval-Augmented Generation)—e.g. a search tool that feeds only the data for the coins the user mentioned.
 
 
 

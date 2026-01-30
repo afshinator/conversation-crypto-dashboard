@@ -7,7 +7,7 @@
 import { list } from '@vercel/blob';
 import { generateText } from 'ai';
 import { openai } from '@ai-sdk/openai';
-import { isAuthenticated } from './auth';
+import { isAuthenticated } from './auth/index.js';
 
 const STORAGE_PREFIX = 'crypto';
 
@@ -25,6 +25,16 @@ async function blobRead(key: string): Promise<unknown> {
     return null;
   }
 }
+
+/* -- How the Data becomes "Context"
+
+The most critical part of this file is the buildContext function. This is what connects the raw data to the AI:
+
+  Loading: The script uses blobRead to pull three JSON files from Vercel Blob storage: derived, global, and topCoins.
+  Formatting: buildContext iterates through that data and turns it into a human-readable string (e.g., "- BTC 50-day MA: 62000.50").
+  Grounding: This string is injected into the systemPrompt. This ensures that when the user asks a question, the AI looks at the snapshot of data provided rather than just guessing based on its training.
+
+*/
 
 function buildContext(derived: Record<string, unknown> | null, globalRaw: unknown, topCoinsRaw: unknown): string {
   const parts: string[] = [];
@@ -108,12 +118,21 @@ export async function POST(request: Request): Promise<Response> {
 ${context}`;
 
   try {
-    const { text } = await generateText({
+    const result = await generateText({
       model: openai('gpt-4o-mini'),
       system: systemPrompt,
       prompt: message,
     });
-    return Response.json({ text });
+    const { text, usage } = result;
+    const usagePayload =
+      usage != null
+        ? {
+            promptTokens: usage.inputTokens ?? 0,
+            completionTokens: usage.outputTokens ?? 0,
+            totalTokens: usage.totalTokens ?? 0,
+          }
+        : null;
+    return Response.json({ text, usage: usagePayload });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     return Response.json(

@@ -5,7 +5,7 @@
 /// <reference types="node" />
 
 import { put } from '@vercel/blob';
-import { isAuthenticated } from './auth';
+import { isAuthenticated } from './auth/index.js';
 
 // --- Fetch config ---
 const DEFAULT_PAUSE_MS_BETWEEN_SAME_VENDOR = 15000;

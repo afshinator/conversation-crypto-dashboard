@@ -187,9 +187,51 @@
   margin-bottom: 0.5rem;
 }
 .chat-intro {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   color: #aaa;
   font-size: 0.95rem;
+}
+.token-counter {
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #555;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.token-counter-heading {
+  font-size: 1rem;
+  margin: 0 0 0.5rem 0;
+  font-weight: 600;
+}
+.token-counter-stats {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.token-counter-label {
+  color: #aaa;
+}
+.token-counter-pct {
+  color: #888;
+  font-size: 0.9rem;
+}
+.token-counter-hint {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.85rem;
+}
+.chat-message-usage {
+  margin-top: 0.5rem;
+  padding-left: 0.5rem;
+  font-size: 0.85rem;
+  color: #888;
+}
+.chat-message-usage .usage-prompt,
+.chat-message-usage .usage-completion,
+.chat-message-usage .usage-total {
+  font-weight: 500;
+}
+.chat-message-usage .usage-pct {
+  color: #666;
+  font-size: 0.8rem;
 }
 .chat-messages {
   min-height: 200px;
