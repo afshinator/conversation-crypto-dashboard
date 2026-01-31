@@ -160,7 +160,7 @@ export default function FetchDataPage() {
               </p>
               {refreshProgress && refreshProgress.current <= 4 && (
                 <p className="muted" style={{ marginTop: '0.25rem', fontSize: '0.9rem' }}>
-                  Pausing ${PAUSE_MS_BETWEEN_COINGECKO/1000}s between CoinGecko calls to avoid rate limit…
+                  Pausing {PAUSE_MS_BETWEEN_COINGECKO/1000}s between CoinGecko calls to avoid rate limit…
                 </p>
               )}
             </>
