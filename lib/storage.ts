@@ -7,9 +7,28 @@ import { put, list, del } from '@vercel/blob';
 
 const STORAGE_PREFIX = 'crypto';
 
-export type StorageKey = 'global' | 'topCoins' | 'bitcoinChart' | 'derived';
+export type StorageKey =
+  | 'global'
+  | 'topCoins'
+  | 'bitcoinChart'
+  | 'trending'
+  | 'categories'
+  | 'coinbaseSpot'
+  | 'krakenTicker'
+  | 'binancePrice'
+  | 'derived';
 
-const STORAGE_KEYS: StorageKey[] = ['global', 'topCoins', 'bitcoinChart', 'derived'];
+const STORAGE_KEYS: StorageKey[] = [
+  'global',
+  'topCoins',
+  'bitcoinChart',
+  'trending',
+  'categories',
+  'coinbaseSpot',
+  'krakenTicker',
+  'binancePrice',
+  'derived',
+];
 
 function pathname(key: StorageKey): string {
   return `${STORAGE_PREFIX}/${key}.json`;
@@ -46,11 +65,11 @@ export async function read<T = unknown>(key: StorageKey): Promise<T | null> {
 }
 
 /**
- * Delete all stored crypto data (all four keys). No-op if blob store is empty or missing.
+ * Delete all stored crypto data (all raw keys + derived). No-op if blob store is empty or missing.
  */
 export async function deleteAll(): Promise<void> {
   try {
-    const { blobs } = await list({ prefix: `${STORAGE_PREFIX}/`, limit: 20 });
+    const { blobs } = await list({ prefix: `${STORAGE_PREFIX}/`, limit: 30 });
     const urls = blobs.map((b) => b.url).filter(Boolean);
     if (urls.length > 0) await del(urls);
   } catch {

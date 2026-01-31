@@ -57,6 +57,51 @@ function buildContext(derived: Record<string, unknown> | null, globalRaw: unknow
     if (fromTop) {
       if (fromTop.marketBreadthAbove50Percent != null) parts.push(`- Market breadth (% coins with positive 24h): ${Number(fromTop.marketBreadthAbove50Percent).toFixed(1)}%`);
     }
+    const fromDiscovery = derived.fromDiscovery as
+      | { topTrendingCoins?: string[]; topPerformingSectors?: { name: string; change24h: number }[]; hypeVsMarketCapDivergence?: boolean; retailMoonshotPresence?: boolean }
+      | undefined;
+    if (fromDiscovery) {
+      if (Array.isArray(fromDiscovery.topTrendingCoins) && fromDiscovery.topTrendingCoins.length > 0) {
+        parts.push(`- Top trending coins: ${fromDiscovery.topTrendingCoins.join(', ')}`);
+      }
+      if (Array.isArray(fromDiscovery.topPerformingSectors) && fromDiscovery.topPerformingSectors.length > 0) {
+        parts.push(
+          `- Top performing sectors (24h): ${fromDiscovery.topPerformingSectors.map((s) => `${s.name} (${s.change24h.toFixed(2)}%)`).join(', ')}`
+        );
+      }
+      if (typeof fromDiscovery.hypeVsMarketCapDivergence === 'boolean') {
+        parts.push(`- Hype vs market cap divergence (top trend rank > 100): ${fromDiscovery.hypeVsMarketCapDivergence}`);
+      }
+      if (typeof fromDiscovery.retailMoonshotPresence === 'boolean') {
+        parts.push(`- Retail moonshot presence (any trending coin rank > 500): ${fromDiscovery.retailMoonshotPresence}`);
+      }
+    }
+    const fromExchangePulse = derived.fromExchangePulse as
+      | {
+          coinbasePrice?: number;
+          krakenPrice?: number;
+          binancePrice?: number | null;
+          priceDisparity?: number;
+          usExchangePremium?: number;
+          isVolatile?: boolean;
+        }
+      | null
+      | undefined;
+    if (fromExchangePulse && typeof fromExchangePulse === 'object') {
+      parts.push(
+        `- Exchange pulse (BTC): Coinbase ${Number(fromExchangePulse.coinbasePrice ?? 0).toFixed(2)} USD, Kraken ${Number(fromExchangePulse.krakenPrice ?? 0).toFixed(2)} USD` +
+          (fromExchangePulse.binancePrice != null ? `, Binance ${Number(fromExchangePulse.binancePrice).toFixed(2)} USDT` : '')
+      );
+      if (typeof fromExchangePulse.priceDisparity === 'number') {
+        parts.push(`- Coinbase–Kraken price disparity: ${fromExchangePulse.priceDisparity.toFixed(2)} USD`);
+      }
+      if (typeof fromExchangePulse.usExchangePremium === 'number') {
+        parts.push(`- US exchange premium vs aggregator (Coinbase − Gecko): ${fromExchangePulse.usExchangePremium.toFixed(2)} USD`);
+      }
+      if (typeof fromExchangePulse.isVolatile === 'boolean') {
+        parts.push(`- Exchange stress (disparity > 50 USD): ${fromExchangePulse.isVolatile}`);
+      }
+    }
   }
   if (globalRaw && typeof globalRaw === 'object') {
     const root = (globalRaw as { data?: Record<string, unknown> }).data ?? (globalRaw as Record<string, unknown>);

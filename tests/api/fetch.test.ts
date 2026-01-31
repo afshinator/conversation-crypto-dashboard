@@ -53,10 +53,15 @@ describe('api/fetch POST', () => {
     })
     const request = new Request('http://localhost/api/fetch', { method: 'POST' })
     await POST(request)
-    expect(mockFetch).toHaveBeenCalledTimes(3)
+    expect(mockFetch).toHaveBeenCalledTimes(8)
     expect(mockFetch).toHaveBeenNthCalledWith(1, 'https://api.coingecko.com/api/v3/global', expect.any(Object))
     expect(mockFetch).toHaveBeenNthCalledWith(2, expect.stringContaining('coins/markets'), expect.any(Object))
     expect(mockFetch).toHaveBeenNthCalledWith(3, expect.stringContaining('bitcoin/market_chart'), expect.any(Object))
+    expect(mockFetch).toHaveBeenNthCalledWith(4, 'https://api.coingecko.com/api/v3/search/trending', expect.any(Object))
+    expect(mockFetch).toHaveBeenNthCalledWith(5, 'https://api.coingecko.com/api/v3/coins/categories', expect.any(Object))
+    expect(mockFetch).toHaveBeenNthCalledWith(6, 'https://api.coinbase.com/v2/prices/BTC-USD/spot', expect.any(Object))
+    expect(mockFetch).toHaveBeenNthCalledWith(7, 'https://api.kraken.com/0/public/Ticker?pair=XBTUSD', expect.any(Object))
+    expect(mockFetch).toHaveBeenNthCalledWith(8, 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', expect.any(Object))
   })
 
   it('returns 200 with ok, persistEnabled, results and data when all requests succeed', async () => {
@@ -77,25 +82,48 @@ describe('api/fetch POST', () => {
         { key: 'global', status: 200, isOk: true },
         { key: 'topCoins', status: 200, isOk: true },
         { key: 'bitcoinChart', status: 200, isOk: true },
+        { key: 'trending', status: 200, isOk: true },
+        { key: 'categories', status: 200, isOk: true },
+        { key: 'coinbaseSpot', status: 200, isOk: true },
+        { key: 'krakenTicker', status: 200, isOk: true },
+        { key: 'binancePrice', status: 200, isOk: true },
       ],
       data: {
         global: { foo: 'bar' },
         topCoins: { foo: 'bar' },
         bitcoinChart: { foo: 'bar' },
+        trending: { foo: 'bar' },
+        categories: { foo: 'bar' },
+        coinbaseSpot: { foo: 'bar' },
+        krakenTicker: { foo: 'bar' },
+        binancePrice: { foo: 'bar' },
       },
     })
-    expect(mockPut).toHaveBeenCalledTimes(4)
+    expect(mockPut).toHaveBeenCalledTimes(9)
     expect(mockPut).toHaveBeenNthCalledWith(1, 'crypto/global.json', '{"foo":"bar"}', expect.any(Object))
     expect(mockPut).toHaveBeenNthCalledWith(2, 'crypto/topCoins.json', '{"foo":"bar"}', expect.any(Object))
     expect(mockPut).toHaveBeenNthCalledWith(3, 'crypto/bitcoinChart.json', '{"foo":"bar"}', expect.any(Object))
-    const derivedCall = mockPut.mock.calls[3]
+    expect(mockPut).toHaveBeenNthCalledWith(4, 'crypto/trending.json', '{"foo":"bar"}', expect.any(Object))
+    expect(mockPut).toHaveBeenNthCalledWith(5, 'crypto/categories.json', '{"foo":"bar"}', expect.any(Object))
+    expect(mockPut).toHaveBeenNthCalledWith(6, 'crypto/coinbaseSpot.json', '{"foo":"bar"}', expect.any(Object))
+    expect(mockPut).toHaveBeenNthCalledWith(7, 'crypto/krakenTicker.json', '{"foo":"bar"}', expect.any(Object))
+    expect(mockPut).toHaveBeenNthCalledWith(8, 'crypto/binancePrice.json', '{"foo":"bar"}', expect.any(Object))
+    const derivedCall = mockPut.mock.calls[8]
     const derived = JSON.parse(derivedCall[1])
     expect(derived).toMatchObject({
       fromGlobal: expect.any(Object),
       fromBitcoinChart: expect.any(Object),
       fromTopCoins: expect.any(Object),
+      fromDiscovery: expect.objectContaining({
+        topTrendingCoins: expect.any(Array),
+        topPerformingSectors: expect.any(Array),
+        hypeVsMarketCapDivergence: expect.any(Boolean),
+        retailMoonshotPresence: expect.any(Boolean),
+      }),
       computedAt: expect.any(Number),
     })
+    expect(derived).toHaveProperty('fromExchangePulse')
+    expect(derived.fromExchangePulse).toBeNull()
   })
 
   it('skips persist and returns persistSkipped when BLOB_READ_WRITE_TOKEN is not set', async () => {
@@ -119,7 +147,7 @@ describe('api/fetch POST', () => {
     expect(mockPut).not.toHaveBeenCalled()
   })
 
-  it('returns 500 with ok false when at least one request fails', async () => {
+  it('returns 200 with ok false when at least one request fails (partial failure)', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
     mockFetch
       .mockResolvedValueOnce({
@@ -137,16 +165,35 @@ describe('api/fetch POST', () => {
         status: 500,
         json: () => Promise.resolve(null),
       })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve([]),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({}) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({}) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({}) })
     const request = new Request('http://localhost/api/fetch', { method: 'POST' })
     const response = await POST(request)
-    expect(response.status).toBe(500)
+    expect(response.status).toBe(200)
     const body = await response.json()
+    expect(body.ok).toBe(false)
     expect(body).toMatchObject({
       ok: false,
       results: [
         { key: 'global', status: 200, isOk: true },
         { key: 'topCoins', status: 200, isOk: true },
         { key: 'bitcoinChart', status: 500, isOk: false },
+        { key: 'trending', status: 200, isOk: true },
+        { key: 'categories', status: 200, isOk: true },
+        { key: 'coinbaseSpot', status: 200, isOk: true },
+        { key: 'krakenTicker', status: 200, isOk: true },
+        { key: 'binancePrice', status: 200, isOk: true },
       ],
     })
   })

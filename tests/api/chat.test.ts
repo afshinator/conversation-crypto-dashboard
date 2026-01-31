@@ -110,6 +110,20 @@ describe('api/chat POST', () => {
                   fromGlobal: { btcDominancePercent: 52 },
                   fromBitcoinChart: {},
                   fromTopCoins: {},
+                  fromDiscovery: {
+                    topTrendingCoins: ['Bitcoin (BTC)', 'Ethereum (ETH)'],
+                    topPerformingSectors: [{ name: 'DeFi', change24h: 3.5 }],
+                    hypeVsMarketCapDivergence: false,
+                    retailMoonshotPresence: true,
+                  },
+                  fromExchangePulse: {
+                    coinbasePrice: 60100,
+                    krakenPrice: 60090,
+                    binancePrice: 60095,
+                    priceDisparity: 10,
+                    usExchangePremium: 100,
+                    isVolatile: false,
+                  },
                 })
               ),
           } as Response)
@@ -137,5 +151,7 @@ describe('api/chat POST', () => {
     expect(mockGenerateText).toHaveBeenCalledTimes(1)
     expect(mockGenerateText.mock.calls[0][0].prompt).toBe('What is BTC dominance?')
     expect(mockGenerateText.mock.calls[0][0].system).toMatch(/crypto|data|analyst/i)
+    expect(mockGenerateText.mock.calls[0][0].system).toMatch(/trending|Retail moonshot|Hype vs market cap/i)
+    expect(mockGenerateText.mock.calls[0][0].system).toMatch(/Exchange pulse|Coinbase|disparity/i)
   })
 })

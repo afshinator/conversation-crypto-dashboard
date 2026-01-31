@@ -5,9 +5,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   computeDerived,
+  deriveDiscovery,
+  deriveExchangePulse,
   type GlobalRaw,
   type TopCoinsRaw,
   type BitcoinChartRaw,
+  type TrendingRaw,
+  type CategoriesRaw,
+  type CoinbaseSpotRaw,
+  type KrakenTickerRaw,
+  type BinancePriceRaw,
 } from '../../lib/derived'
 
 describe('computeDerived', () => {
@@ -126,5 +133,146 @@ describe('computeDerived', () => {
     expect(out.fromBitcoinChart.ma50).toBeNull()
     expect(out.fromBitcoinChart.trend).toBeNull()
     expect(out.fromTopCoins.marketBreadthAbove50Percent).toBeNull()
+    expect(out.fromDiscovery.topTrendingCoins).toEqual([])
+    expect(out.fromDiscovery.topPerformingSectors).toEqual([])
+    expect(out.fromDiscovery.hypeVsMarketCapDivergence).toBe(false)
+    expect(out.fromDiscovery.retailMoonshotPresence).toBe(false)
+    expect(out.fromExchangePulse).toBeNull()
+  })
+})
+
+describe('deriveDiscovery / fromDiscovery', () => {
+  it('sets hypeVsMarketCapDivergence true when top trending rank > 100', () => {
+    const trendingRaw: TrendingRaw = {
+      coins: [
+        { item: { name: 'MidCap', symbol: 'MID', market_cap_rank: 150 } },
+        { item: { name: 'Other', symbol: 'OTH', market_cap_rank: 200 } },
+      ],
+    }
+    const out = deriveDiscovery(trendingRaw, null)
+    expect(out.hypeVsMarketCapDivergence).toBe(true)
+    expect(out.topTrendingCoins[0]).toBe('MidCap (MID)')
+  })
+
+  it('sets hypeVsMarketCapDivergence false when top trending rank <= 100', () => {
+    const trendingRaw: TrendingRaw = {
+      coins: [{ item: { name: 'Bitcoin', symbol: 'BTC', market_cap_rank: 1 } }],
+    }
+    const out = deriveDiscovery(trendingRaw, null)
+    expect(out.hypeVsMarketCapDivergence).toBe(false)
+  })
+
+  it('sets retailMoonshotPresence true when any trending coin rank > 500', () => {
+    const trendingRaw: TrendingRaw = {
+      coins: [
+        { item: { name: 'Bitcoin', symbol: 'BTC', market_cap_rank: 1 } },
+        { item: { name: 'MemeCoin', symbol: 'MEME', market_cap_rank: 600 } },
+      ],
+    }
+    const out = deriveDiscovery(trendingRaw, null)
+    expect(out.retailMoonshotPresence).toBe(true)
+  })
+
+  it('sets retailMoonshotPresence false when no rank > 500', () => {
+    const trendingRaw: TrendingRaw = {
+      coins: [
+        { item: { name: 'A', symbol: 'A', market_cap_rank: 100 } },
+        { item: { name: 'B', symbol: 'B', market_cap_rank: 300 } },
+      ],
+    }
+    const out = deriveDiscovery(trendingRaw, null)
+    expect(out.retailMoonshotPresence).toBe(false)
+  })
+
+  it('builds topPerformingSectors from categories by 24h change', () => {
+    const categoriesRaw: CategoriesRaw = [
+      { name: 'DeFi', market_cap_change_24h: 5 },
+      { name: 'Layer 1', market_cap_change_24h: -1 },
+      { name: 'Meme', market_cap_change_24h: 10 },
+    ]
+    const out = deriveDiscovery(null, categoriesRaw)
+    expect(out.topPerformingSectors).toHaveLength(3)
+    expect(out.topPerformingSectors[0]).toEqual({ name: 'Meme', change24h: 10 })
+    expect(out.topPerformingSectors[1]).toEqual({ name: 'DeFi', change24h: 5 })
+    expect(out.topPerformingSectors[2]).toEqual({ name: 'Layer 1', change24h: -1 })
+  })
+
+  it('computeDerived includes fromDiscovery when trending and categories passed', () => {
+    const trendingRaw: TrendingRaw = {
+      coins: [
+        { item: { name: 'Alpha', symbol: 'A', market_cap_rank: 150 } },
+        { item: { name: 'Beta', symbol: 'B', market_cap_rank: 700 } },
+      ],
+    }
+    const categoriesRaw: CategoriesRaw = [{ name: 'Sector1', market_cap_change_24h: 2 }]
+    const out = computeDerived(null, null, null, trendingRaw, categoriesRaw)
+    expect(out.fromDiscovery.hypeVsMarketCapDivergence).toBe(true)
+    expect(out.fromDiscovery.retailMoonshotPresence).toBe(true)
+    expect(out.fromDiscovery.topTrendingCoins).toContain('Alpha (A)')
+    expect(out.fromDiscovery.topPerformingSectors).toEqual([{ name: 'Sector1', change24h: 2 }])
+  })
+})
+
+describe('deriveExchangePulse / fromExchangePulse', () => {
+  it('returns null when Coinbase or Kraken price is missing', () => {
+    expect(deriveExchangePulse(null, null, null, 60000)).toBeNull()
+    expect(
+      deriveExchangePulse(
+        { data: { amount: '60000' } } as CoinbaseSpotRaw,
+        null,
+        null,
+        60000
+      )
+    ).toBeNull()
+    expect(
+      deriveExchangePulse(
+        null,
+        { result: { XXBTZUSD: { c: ['60010'] } } } as KrakenTickerRaw,
+        null,
+        60000
+      )
+    ).toBeNull()
+  })
+
+  it('returns normalized prices and disparity when Coinbase and Kraken valid', () => {
+    const coinbase: CoinbaseSpotRaw = { data: { amount: '60100' } }
+    const kraken: KrakenTickerRaw = { result: { XXBTZUSD: { c: ['60090'] } } }
+    const out = deriveExchangePulse(coinbase, kraken, null, 60000)
+    expect(out).not.toBeNull()
+    expect(out!.coinbasePrice).toBe(60100)
+    expect(out!.krakenPrice).toBe(60090)
+    expect(out!.binancePrice).toBeNull()
+    expect(out!.priceDisparity).toBe(10)
+    expect(out!.usExchangePremium).toBe(100)
+    expect(out!.isVolatile).toBe(false)
+  })
+
+  it('sets isVolatile true when disparity > 50', () => {
+    const coinbase: CoinbaseSpotRaw = { data: { amount: '60100' } }
+    const kraken: KrakenTickerRaw = { result: { XXBTZUSD: { c: ['60040'] } } }
+    const out = deriveExchangePulse(coinbase, kraken, null, 60000)
+    expect(out!.priceDisparity).toBe(60)
+    expect(out!.isVolatile).toBe(true)
+  })
+
+  it('includes binancePrice when Binance raw provided', () => {
+    const coinbase: CoinbaseSpotRaw = { data: { amount: '60050' } }
+    const kraken: KrakenTickerRaw = { result: { XXBTZUSD: { c: ['60055'] } } }
+    const binance: BinancePriceRaw = { symbol: 'BTCUSDT', price: '60052' }
+    const out = deriveExchangePulse(coinbase, kraken, binance, 60000)
+    expect(out!.binancePrice).toBe(60052)
+  })
+
+  it('computeDerived includes fromExchangePulse when exchange data passed', () => {
+    const coinbase: CoinbaseSpotRaw = { data: { amount: '60100' } }
+    const kraken: KrakenTickerRaw = { result: { XXBTZUSD: { c: ['60090'] } } }
+    const bitcoinChart: BitcoinChartRaw = {
+      prices: Array.from({ length: 200 }, (_, i) => [1700000000000 + i * 86400000, 60000]),
+    }
+    const out = computeDerived(null, null, bitcoinChart, undefined, undefined, coinbase, kraken, null)
+    expect(out.fromExchangePulse).not.toBeNull()
+    expect(out.fromExchangePulse!.coinbasePrice).toBe(60100)
+    expect(out.fromExchangePulse!.krakenPrice).toBe(60090)
+    expect(out.fromExchangePulse!.usExchangePremium).toBe(100)
   })
 })

@@ -83,6 +83,9 @@ In the context of an LLM, the systemPrompt is the operating system of the conver
 
 ## TODO, Notes, and Fiddling around...
 
+👉🏽 Take a look at [data-sources.md](./data-sources.md) for details on which endpoints are fetched, and why.
+
+
 #### If the AI is still "wandering" or giving too much advice, we can tighten the phrasing further:
 
       Current phrasing: "You are a crypto market analyst."
@@ -122,13 +125,13 @@ The chat UI includes a **Token Counter** that shows per-response and session tot
 
 **If we ever overload the context:** the standard solution is RAG (Retrieval-Augmented Generation)—e.g. a search tool that feeds only the data for the coins the user mentioned.
 
-
+Data sources (CoinGecko global, bitcoinChart, topCoins, trending, categories; Coinbase, Kraken, Binance for BTC spot/ticker) and the derived signals we compute from each are documented in **[data-sources.md](./data-sources.md)**.
 
 ## Tech Stack
 
 - **Frontend:** React + Vite boilerplate, deployed on Vercel
 - **Backend:** Vercel serverless functions (Node.js)
-- **Data:** CoinGecko API (free layer)
+- **Data:** CoinGecko API (free layer); Coinbase, Kraken, Binance (BTC spot/ticker for live floor)
 - **LLM:** OpenAI (via AI SDK -  not free!)
 - **Storage:** Vercel Blob;  maybe switch to KV later.
 - **Testing:** Vitest

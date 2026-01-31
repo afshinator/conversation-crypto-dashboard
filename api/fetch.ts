@@ -24,6 +24,11 @@ const FETCH_SOURCES: { key: string; url: string }[] = [
     key: 'bitcoinChart',
     url: 'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=200',
   },
+  { key: 'trending', url: 'https://api.coingecko.com/api/v3/search/trending' },
+  { key: 'categories', url: 'https://api.coingecko.com/api/v3/coins/categories' },
+  { key: 'coinbaseSpot', url: 'https://api.coinbase.com/v2/prices/BTC-USD/spot' },
+  { key: 'krakenTicker', url: 'https://api.kraken.com/0/public/Ticker?pair=XBTUSD' },
+  { key: 'binancePrice', url: 'https://api.binance-us.com/api/v3/ticker/price?symbol=BTCUSDT' },
 ];
 function getHostnameFromUrl(url: string): string {
   return new URL(url).hostname;
@@ -31,7 +36,6 @@ function getHostnameFromUrl(url: string): string {
 
 // --- HTTP client (inlined for Vercel function boundary) ---
 const HTTP_STATUS_OK = 200;
-const HTTP_STATUS_SERVER_ERROR = 500;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 async function httpRequest<T>(
@@ -101,7 +105,12 @@ function movingAverage(prices: [number, number][], days: number): number | null 
 function computeDerived(
   globalRaw: Record<string, unknown> | null | undefined,
   topCoinsRaw: unknown,
-  bitcoinChartRaw: Record<string, unknown> | null | undefined
+  bitcoinChartRaw: Record<string, unknown> | null | undefined,
+  trendingRaw?: Record<string, unknown> | null,
+  categoriesRaw?: unknown,
+  coinbaseSpotRaw?: Record<string, unknown> | null,
+  krakenTickerRaw?: Record<string, unknown> | null,
+  binancePriceRaw?: Record<string, unknown> | null
 ): Record<string, unknown> {
   const root = (globalRaw?.data ?? globalRaw) as Record<string, unknown> | undefined;
   const cap = (root?.total_market_cap as { usd?: number } | undefined)?.usd ?? null;
@@ -142,6 +151,14 @@ function computeDerived(
   const top10 = coins.slice(0, 10);
   const next90 = coins.slice(10, 100);
 
+  const fromDiscovery = deriveDiscoveryInline(trendingRaw, categoriesRaw);
+  const fromExchangePulse = deriveExchangePulseInline(
+    coinbaseSpotRaw,
+    krakenTickerRaw,
+    binancePriceRaw,
+    currentPrice ?? 0
+  );
+
   return {
     fromGlobal: {
       volumeRatio,
@@ -156,7 +173,69 @@ function computeDerived(
       avgPriceChange24hTop10: avg(top10),
       avgPriceChange24hNext90: avg(next90),
     },
+    fromDiscovery,
+    fromExchangePulse,
     computedAt: Math.floor(Date.now() / 1000),
+  };
+}
+
+const EXCHANGE_PULSE_STRESS_THRESHOLD_USD = 50;
+
+function deriveExchangePulseInline(
+  coinbaseRaw: Record<string, unknown> | null | undefined,
+  krakenRaw: Record<string, unknown> | null | undefined,
+  binanceRaw: Record<string, unknown> | null | undefined,
+  geckoBtcPrice: number
+): {
+  coinbasePrice: number;
+  krakenPrice: number;
+  binancePrice: number | null;
+  priceDisparity: number;
+  usExchangePremium: number;
+  isVolatile: boolean;
+} | null {
+  const data = coinbaseRaw?.data as { amount?: string } | undefined;
+  const cbPrice = Number(data?.amount ?? 0);
+  const result = krakenRaw?.result as { XXBTZUSD?: { c?: string[] } } | undefined;
+  const krPrice = Number(result?.XXBTZUSD?.c?.[0] ?? 0);
+  if (cbPrice === 0 || krPrice === 0) return null;
+
+  const bnPriceStr = binanceRaw?.price as string | undefined;
+  const bnPrice = bnPriceStr != null && bnPriceStr !== '' ? Number(bnPriceStr) : null;
+
+  return {
+    coinbasePrice: cbPrice,
+    krakenPrice: krPrice,
+    binancePrice: bnPrice,
+    priceDisparity: Math.abs(cbPrice - krPrice),
+    usExchangePremium: cbPrice - geckoBtcPrice,
+    isVolatile: Math.abs(cbPrice - krPrice) > EXCHANGE_PULSE_STRESS_THRESHOLD_USD,
+  };
+}
+
+function deriveDiscoveryInline(
+  trendingRaw: Record<string, unknown> | unknown[] | null | undefined,
+  categoriesRaw: unknown
+): { topTrendingCoins: string[]; topPerformingSectors: { name: string; change24h: number }[]; hypeVsMarketCapDivergence: boolean; retailMoonshotPresence: boolean } {
+  const trendingCoins = Array.isArray((trendingRaw as { coins?: unknown[] })?.coins)
+    ? (trendingRaw as { coins: Array<{ item?: { name?: string; symbol?: string; market_cap_rank?: number } }> }).coins
+    : [];
+  const ranks = trendingCoins.map((c) => c.item?.market_cap_rank ?? 0);
+  const topTrendingRank = ranks[0] ?? 0;
+  const topTrendingCoins = trendingCoins
+    .slice(0, 5)
+    .map((c) => `${c.item?.name ?? 'Unknown'} (${c.item?.symbol ?? '?'})`);
+  const categories = Array.isArray(categoriesRaw) ? categoriesRaw : [];
+  const topPerformingSectors = (categories as { name?: string; market_cap_change_24h?: number }[])
+    .filter((cat) => cat.market_cap_change_24h != null)
+    .sort((a, b) => (b.market_cap_change_24h ?? 0) - (a.market_cap_change_24h ?? 0))
+    .slice(0, 3)
+    .map((cat) => ({ name: cat.name ?? 'Unknown', change24h: cat.market_cap_change_24h ?? 0 }));
+  return {
+    topTrendingCoins,
+    topPerformingSectors,
+    hypeVsMarketCapDivergence: topTrendingRank > 100,
+    retailMoonshotPresence: ranks.some((r) => r > 500),
   };
 }
 
@@ -207,7 +286,12 @@ export async function POST(request: Request): Promise<Response> {
       const derived = computeDerived(
         data.global as Record<string, unknown>,
         data.topCoins,
-        data.bitcoinChart as Record<string, unknown>
+        data.bitcoinChart as Record<string, unknown>,
+        (data.trending as Record<string, unknown>) ?? null,
+        data.categories,
+        (data.coinbaseSpot as Record<string, unknown>) ?? null,
+        (data.krakenTicker as Record<string, unknown>) ?? null,
+        (data.binancePrice as Record<string, unknown>) ?? null
       );
       if (hasBlobToken) {
         await blobWrite('derived', derived);
@@ -225,9 +309,8 @@ export async function POST(request: Request): Promise<Response> {
       results,
       ...(INCLUDE_DATA_IN_RESPONSE && Object.keys(data).length > 0 && { data }),
     };
-    return Response.json(body, {
-      status: allOk ? HTTP_STATUS_OK : HTTP_STATUS_SERVER_ERROR,
-    });
+    // Always return 200 when we completed the loop (no throw). Let clients use body.ok and results to detect partial failure.
+    return Response.json(body, { status: HTTP_STATUS_OK });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return Response.json({ error: 'FUNCTION_INVOCATION_FAILED', message }, { status: 500 });

@@ -30,8 +30,13 @@ describe('storage', () => {
     expect(STORAGE_KEYS).toContain('global')
     expect(STORAGE_KEYS).toContain('topCoins')
     expect(STORAGE_KEYS).toContain('bitcoinChart')
+    expect(STORAGE_KEYS).toContain('trending')
+    expect(STORAGE_KEYS).toContain('categories')
+    expect(STORAGE_KEYS).toContain('coinbaseSpot')
+    expect(STORAGE_KEYS).toContain('krakenTicker')
+    expect(STORAGE_KEYS).toContain('binancePrice')
     expect(STORAGE_KEYS).toContain('derived')
-    expect(STORAGE_KEYS).toHaveLength(4)
+    expect(STORAGE_KEYS).toHaveLength(9)
   })
 
   it('write calls put with pathname and JSON body', async () => {

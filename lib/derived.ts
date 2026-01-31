@@ -42,7 +42,49 @@ export interface BitcoinChartRaw {
   total_volumes?: [number, number][];
 }
 
+/** CoinGecko /search/trending: coins[].item has name, symbol, market_cap_rank */
+export interface TrendingRaw {
+  coins?: Array<{ item?: { name?: string; symbol?: string; market_cap_rank?: number }; [key: string]: unknown }>;
+  [key: string]: unknown;
+}
+
+/** CoinGecko /coins/categories: array of { name, market_cap_change_24h } */
+export interface CategoryItem {
+  name?: string;
+  market_cap_change_24h?: number;
+  [key: string]: unknown;
+}
+export type CategoriesRaw = CategoryItem[];
+
+/** Coinbase /v2/prices/BTC-USD/spot: data.amount (string) */
+export interface CoinbaseSpotRaw {
+  data?: { amount?: string; currency?: string };
+  [key: string]: unknown;
+}
+
+/** Kraken /0/public/Ticker?pair=XBTUSD: result.XXBTZUSD.c[0] = last trade (string) */
+export interface KrakenTickerRaw {
+  result?: { XXBTZUSD?: { c?: string[] }; [key: string]: unknown };
+  [key: string]: unknown;
+}
+
+/** Binance /api/v3/ticker/price?symbol=BTCUSDT: price (string) */
+export interface BinancePriceRaw {
+  symbol?: string;
+  price?: string;
+  [key: string]: unknown;
+}
+
 // --- Output type ---
+
+export interface ExchangePulseResult {
+  coinbasePrice: number;
+  krakenPrice: number;
+  binancePrice: number | null;
+  priceDisparity: number;
+  usExchangePremium: number;
+  isVolatile: boolean;
+}
 
 export interface DerivedMetrics {
   fromGlobal: {
@@ -63,6 +105,13 @@ export interface DerivedMetrics {
     avgPriceChange24hTop10: number | null;
     avgPriceChange24hNext90: number | null;
   };
+  fromDiscovery: {
+    topTrendingCoins: string[];
+    topPerformingSectors: { name: string; change24h: number }[];
+    hypeVsMarketCapDivergence: boolean;
+    retailMoonshotPresence: boolean;
+  };
+  fromExchangePulse: ExchangePulseResult | null;
   computedAt: number;
 }
 
@@ -146,19 +195,95 @@ function deriveFromTopCoins(raw: TopCoinsRaw | null | undefined): DerivedMetrics
 }
 
 /**
+ * Derive discovery signals from trending and categories raw payloads.
+ * Extracts signal from noise (no thumb URLs / internal IDs) for the LLM.
+ */
+export function deriveDiscovery(
+  trendingRaw: TrendingRaw | null | undefined,
+  categoriesRaw: CategoriesRaw | null | undefined
+): DerivedMetrics['fromDiscovery'] {
+  const trendingCoins = trendingRaw?.coins ?? [];
+  const ranks = trendingCoins.map((c) => c.item?.market_cap_rank ?? 0);
+  const topTrendingRank = ranks[0] ?? 0;
+
+  const topTrendingCoins = trendingCoins
+    .slice(0, 5)
+    .map((c) => `${c.item?.name ?? 'Unknown'} (${c.item?.symbol ?? '?'})`);
+
+  const topPerformingSectors = (Array.isArray(categoriesRaw) ? categoriesRaw : [])
+    .filter((cat) => cat.market_cap_change_24h != null)
+    .sort((a, b) => (b.market_cap_change_24h ?? 0) - (a.market_cap_change_24h ?? 0))
+    .slice(0, 3)
+    .map((cat) => ({
+      name: cat.name ?? 'Unknown',
+      change24h: cat.market_cap_change_24h ?? 0,
+    }));
+
+  return {
+    topTrendingCoins,
+    topPerformingSectors,
+    hypeVsMarketCapDivergence: topTrendingRank > 100,
+    retailMoonshotPresence: ranks.some((r) => r > 500),
+  };
+}
+
+const EXCHANGE_PULSE_STRESS_THRESHOLD_USD = 50;
+
+/**
+ * Derive normalized exchange pulse from Coinbase, Kraken, Binance and Gecko BTC price.
+ * All prices cast to Number; returns null if Coinbase or Kraken price is missing/invalid.
+ */
+export function deriveExchangePulse(
+  coinbaseRaw: CoinbaseSpotRaw | null | undefined,
+  krakenRaw: KrakenTickerRaw | null | undefined,
+  binanceRaw: BinancePriceRaw | null | undefined,
+  geckoBtcPrice: number
+): ExchangePulseResult | null {
+  const cbPrice = Number(coinbaseRaw?.data?.amount ?? 0);
+  const krPrice = Number(krakenRaw?.result?.XXBTZUSD?.c?.[0] ?? 0);
+  if (cbPrice === 0 || krPrice === 0) return null;
+
+  const bnPriceRaw = binanceRaw?.price;
+  const bnPrice = bnPriceRaw != null && bnPriceRaw !== '' ? Number(bnPriceRaw) : null;
+
+  return {
+    coinbasePrice: cbPrice,
+    krakenPrice: krPrice,
+    binancePrice: bnPrice,
+    priceDisparity: Math.abs(cbPrice - krPrice),
+    usExchangePremium: cbPrice - geckoBtcPrice,
+    isVolatile: Math.abs(cbPrice - krPrice) > EXCHANGE_PULSE_STRESS_THRESHOLD_USD,
+  };
+}
+
+/**
  * Compute all derived metrics from raw API payloads.
  * Pure; no I/O. Pass null/undefined for any missing payload.
  */
 export function computeDerived(
   globalRaw: GlobalRaw | null | undefined,
   topCoinsRaw: TopCoinsRaw | null | undefined,
-  bitcoinChartRaw: BitcoinChartRaw | null | undefined
+  bitcoinChartRaw: BitcoinChartRaw | null | undefined,
+  trendingRaw?: TrendingRaw | null,
+  categoriesRaw?: CategoriesRaw | null,
+  coinbaseSpotRaw?: CoinbaseSpotRaw | null,
+  krakenTickerRaw?: KrakenTickerRaw | null,
+  binancePriceRaw?: BinancePriceRaw | null
 ): DerivedMetrics {
   const g = pickGlobal(globalRaw ?? {});
   const volumeRatio =
     g.totalMarketCapUsd != null && g.totalVolumeUsd != null && g.totalMarketCapUsd > 0
       ? g.totalVolumeUsd / g.totalMarketCapUsd
       : null;
+
+  const fromBitcoinChart = deriveFromBitcoinChart(bitcoinChartRaw);
+  const geckoBtcPrice = fromBitcoinChart.currentPrice ?? 0;
+  const fromExchangePulse = deriveExchangePulse(
+    coinbaseSpotRaw ?? undefined,
+    krakenTickerRaw ?? undefined,
+    binancePriceRaw ?? undefined,
+    geckoBtcPrice
+  );
 
   return {
     fromGlobal: {
@@ -168,8 +293,10 @@ export function computeDerived(
       marketMomentum24hPercent: g.momentum24h,
       updatedAt: g.updatedAt,
     },
-    fromBitcoinChart: deriveFromBitcoinChart(bitcoinChartRaw),
+    fromBitcoinChart,
     fromTopCoins: deriveFromTopCoins(topCoinsRaw),
+    fromDiscovery: deriveDiscovery(trendingRaw, categoriesRaw ?? undefined),
+    fromExchangePulse,
     computedAt: Math.floor(Date.now() / 1000),
   };
 }

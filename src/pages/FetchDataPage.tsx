@@ -37,8 +37,16 @@ export default function FetchDataPage() {
         setRefreshStatus('success')
         try {
           const body: FetchResponse = JSON.parse(text)
+          const failed = body.results?.filter((r) => !r.isOk) ?? []
           if (body.persistSkipped && body.persistSkipReason) {
             setRefreshMessage(`Data refreshed. Persistence skipped: ${body.persistSkipReason}`)
+          } else if (failed.length > 0) {
+            const failedSummary = failed
+              .map((r) => `${r.key} (${r.status}${r.error ? `: ${r.error}` : ''})`)
+              .join('; ')
+            setRefreshMessage(
+              `Data refreshed with ${body.results!.length - failed.length}/${body.results!.length} sources. Failed: ${failedSummary}`
+            )
           } else {
             setRefreshMessage('Data refreshed.')
           }
