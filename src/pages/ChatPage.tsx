@@ -15,6 +15,15 @@ type Message = {
   usage?: TokenUsage | null
 }
 
+/** Renders text with **word** segments as <strong>. */
+function renderWithBold(text: string): React.ReactNode {
+  const parts = text.split(/\*\*(.+?)\*\*/g)
+  if (parts.length === 1) return text
+  return parts.map((part, i) =>
+    i % 2 === 1 ? <strong key={i}>{part}</strong> : part
+  )
+}
+
 function TokenCounter({ messages }: { messages: Message[] }) {
   const usages = messages.filter((m): m is Message & { usage: TokenUsage } => m.role === 'assistant' && m.usage != null)
   if (usages.length === 0) return null
@@ -118,7 +127,9 @@ export default function ChatPage() {
         {messages.map((msg, i) => (
           <div key={i} className={`chat-message chat-message--${msg.role}`}>
             <span className="chat-message-role">{msg.role === 'user' ? 'You' : 'Assistant'}</span>
-            <div className="chat-message-content">{msg.content}</div>
+            <div className="chat-message-content">
+              {msg.role === 'assistant' ? renderWithBold(msg.content) : msg.content}
+            </div>
             {msg.role === 'assistant' && msg.usage && (
               <div className="chat-message-usage" aria-label="Token usage for this response">
                 <span className="usage-label">Tokens:</span>{' '}

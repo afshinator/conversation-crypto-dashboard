@@ -129,6 +129,11 @@ The chat UI includes a **Token Counter** that shows per-response and session tot
 
 Data sources (CoinGecko global, bitcoinChart, topCoins, trending, categories; Coinbase, Kraken, Binance for BTC spot/ticker) and the derived signals we compute from each are documented in **[data-sources.md](./data-sources.md)**.
 
+
+## Misc
+
+   - Add a markdown interpreter for the Assistant output.
+
 ## Tech Stack
 
 - **Frontend:** React + Vite boilerplate, deployed on Vercel

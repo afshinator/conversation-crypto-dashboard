@@ -198,6 +198,31 @@ describe('api/fetch POST', () => {
     })
   })
 
+  it('full run: results have expected source keys in order (fetch sources)', async () => {
+    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({}),
+    })
+    const request = new Request('http://localhost/api/fetch', { method: 'POST' })
+    const response = await POST(request)
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    const expectedKeys = [
+      'global',
+      'topCoins',
+      'bitcoinChart',
+      'trending',
+      'categories',
+      'coinbaseSpot',
+      'krakenTicker',
+      'binancePrice',
+    ]
+    expect(body.results).toHaveLength(expectedKeys.length)
+    expect(body.results.map((r: { key: string }) => r.key)).toEqual(expectedKeys)
+  })
+
   it('step mode: POST with body { step: 1 } fetches one source and returns step response', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
     mockFetch.mockResolvedValue({

@@ -159,7 +159,6 @@ export async function POST(request: Request): Promise<Response> {
 
   const context = buildContext(derived as Record<string, unknown> | null, globalRaw, topCoinsRaw);
   const systemPrompt = `You are a crypto market analyst. Use ONLY the following persisted data to answer. Do not use live data or external knowledge beyond this snapshot. If the data does not contain what the user asks for, say so briefly.
-
 ${context}`;
 
   try {
