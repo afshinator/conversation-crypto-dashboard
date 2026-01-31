@@ -61,7 +61,7 @@ describe('api/fetch POST', () => {
     expect(mockFetch).toHaveBeenNthCalledWith(5, 'https://api.coingecko.com/api/v3/coins/categories', expect.any(Object))
     expect(mockFetch).toHaveBeenNthCalledWith(6, 'https://api.coinbase.com/v2/prices/BTC-USD/spot', expect.any(Object))
     expect(mockFetch).toHaveBeenNthCalledWith(7, 'https://api.kraken.com/0/public/Ticker?pair=XBTUSD', expect.any(Object))
-    expect(mockFetch).toHaveBeenNthCalledWith(8, 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', expect.any(Object))
+    expect(mockFetch).toHaveBeenNthCalledWith(8, 'https://api.binance-us.com/api/v3/ticker/price?symbol=BTCUSDT', expect.any(Object))
   })
 
   it('returns 200 with ok, persistEnabled, results and data when all requests succeed', async () => {
@@ -196,5 +196,34 @@ describe('api/fetch POST', () => {
         { key: 'binancePrice', status: 200, isOk: true },
       ],
     })
+  })
+
+  it('step mode: POST with body { step: 1 } fetches one source and returns step response', async () => {
+    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: { total_market_cap: { usd: 1 } } }),
+    })
+    const request = new Request('http://localhost/api/fetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: 1 }),
+    })
+    const response = await POST(request)
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body).toMatchObject({
+      ok: true,
+      step: 1,
+      key: 'global',
+      status: 200,
+      isOk: true,
+      done: false,
+    })
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockFetch).toHaveBeenCalledWith('https://api.coingecko.com/api/v3/global', expect.any(Object))
+    expect(mockPut).toHaveBeenCalledTimes(1)
+    expect(mockPut).toHaveBeenCalledWith('crypto/global.json', expect.any(String), expect.any(Object))
   })
 })

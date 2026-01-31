@@ -85,6 +85,8 @@ In the context of an LLM, the systemPrompt is the operating system of the conver
 
 👉🏽 Take a look at [data-sources.md](./data-sources.md) for details on which endpoints are fetched, and why.
 
+**Data page (chunked refresh):** The Data page runs refresh in **chunked steps** (one source per request, 9 steps total) so each serverless call stays under Vercel’s timeout. The UI shows progress (“Fetching 1/9 (global)…”) and waits 15s between CoinGecko steps to avoid rate limits. After step 9 it loads the current snapshot via `GET /api/data` for the accordion.
+
 
 #### If the AI is still "wandering" or giving too much advice, we can tighten the phrasing further:
 

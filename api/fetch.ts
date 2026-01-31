@@ -4,11 +4,11 @@
  */
 /// <reference types="node" />
 
-import { put } from '@vercel/blob';
+import { put, list } from '@vercel/blob';
 import { isAuthenticated } from './auth/index.js';
 
 // --- Fetch config ---
-const DEFAULT_PAUSE_MS_BETWEEN_SAME_VENDOR = 15000;
+const DEFAULT_PAUSE_MS_BETWEEN_SAME_VENDOR = 6000;  // have to also change pages/FetchDataPage
 function getPauseMs(): number {
   return process.env.PAUSE_MS_BETWEEN_SAME_VENDOR !== undefined
     ? Number(process.env.PAUSE_MS_BETWEEN_SAME_VENDOR)
@@ -92,6 +92,21 @@ async function blobWrite(key: string, data: unknown): Promise<void> {
     allowOverwrite: true,
     contentType: 'application/json',
   });
+}
+
+async function blobRead(key: string): Promise<unknown> {
+  try {
+    const { blobs } = await list({ prefix: `${STORAGE_PREFIX}/`, limit: 20 });
+    const target = `${STORAGE_PREFIX}/${key}.json`;
+    const blob = blobs.find((b) => b.pathname === target);
+    if (!blob?.url) return null;
+    const res = await fetch(blob.url);
+    if (!res.ok) return null;
+    const text = await res.text();
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
 }
 
 // --- Derived (inlined from lib/derived; same shape for storage/chat) ---
@@ -239,6 +254,8 @@ function deriveDiscoveryInline(
   };
 }
 
+const TOTAL_STEPS = FETCH_SOURCES.length + 1; // 8 sources + 1 derive step
+
 export async function POST(request: Request): Promise<Response> {
   if (request.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
@@ -249,6 +266,63 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const hasBlobToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+    let parsedBody: { step?: number };
+    try {
+      parsedBody = (await request.json()) as { step?: number };
+    } catch {
+      parsedBody = {};
+    }
+    const step = typeof parsedBody.step === 'number' && parsedBody.step >= 1 && parsedBody.step <= TOTAL_STEPS ? parsedBody.step : null;
+
+    // Chunked mode: single step (no pause; client handles pacing)
+    if (step !== null) {
+      if (step >= 1 && step <= FETCH_SOURCES.length) {
+        const source = FETCH_SOURCES[step - 1];
+        const response = await httpRequest<unknown>(source.url, { timeout: REQUEST_TIMEOUT_MS });
+        if (hasBlobToken && response.isOk && response.data !== null) {
+          await blobWrite(source.key, response.data);
+        }
+        return Response.json(
+          {
+            ok: response.isOk,
+            step,
+            key: source.key,
+            status: response.status,
+            isOk: response.isOk,
+            ...(response.error && { error: response.error }),
+            done: false,
+          },
+          { status: HTTP_STATUS_OK }
+        );
+      }
+      // step === TOTAL_STEPS (9): read from Blob, compute derived, persist
+      const [globalRaw, topCoinsRaw, bitcoinChartRaw, trendingRaw, categoriesRaw, coinbaseSpotRaw, krakenTickerRaw, binancePriceRaw] = await Promise.all([
+        blobRead('global'),
+        blobRead('topCoins'),
+        blobRead('bitcoinChart'),
+        blobRead('trending'),
+        blobRead('categories'),
+        blobRead('coinbaseSpot'),
+        blobRead('krakenTicker'),
+        blobRead('binancePrice'),
+      ]);
+      if (globalRaw != null && topCoinsRaw != null && bitcoinChartRaw != null && hasBlobToken) {
+        const derived = computeDerived(
+          globalRaw as Record<string, unknown>,
+          topCoinsRaw,
+          bitcoinChartRaw as Record<string, unknown>,
+          (trendingRaw as Record<string, unknown>) ?? null,
+          categoriesRaw,
+          (coinbaseSpotRaw as Record<string, unknown>) ?? null,
+          (krakenTickerRaw as Record<string, unknown>) ?? null,
+          (binancePriceRaw as Record<string, unknown>) ?? null
+        );
+        await blobWrite('derived', derived);
+      }
+      return Response.json({ ok: true, step: TOTAL_STEPS, done: true }, { status: HTTP_STATUS_OK });
+    }
+
+    // Full run (all sources in one invocation; with pause between same-host)
     const results: { key: string; status: number; isOk: boolean; error?: string }[] = [];
     const data: Record<string, unknown> = {};
     let lastHostname: string | null = null;
@@ -299,7 +373,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const allOk = results.every((r) => r.isOk);
-    const body = {
+    const responseBody = {
       ok: allOk,
       persistEnabled: PERSIST_FETCHED_DATA,
       ...(PERSIST_FETCHED_DATA && !hasBlobToken && {
@@ -310,7 +384,7 @@ export async function POST(request: Request): Promise<Response> {
       ...(INCLUDE_DATA_IN_RESPONSE && Object.keys(data).length > 0 && { data }),
     };
     // Always return 200 when we completed the loop (no throw). Let clients use body.ok and results to detect partial failure.
-    return Response.json(body, { status: HTTP_STATUS_OK });
+    return Response.json(responseBody, { status: HTTP_STATUS_OK });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return Response.json({ error: 'FUNCTION_INVOCATION_FAILED', message }, { status: 500 });

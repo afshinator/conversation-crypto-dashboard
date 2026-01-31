@@ -3,65 +3,103 @@ import { Link, useOutletContext } from 'react-router-dom'
 import type { AuthOutletContext } from './ChatPage'
 
 const API_NOT_IMPLEMENTED = 'API not implemented or server not running'
+const TOTAL_STEPS = 9 // 8 sources + 1 derive step
+const PAUSE_MS_BETWEEN_COINGECKO = 6_000 // same as backend default; client paces to avoid timeout
 
 type RefreshStatus = 'idle' | 'loading' | 'success' | 'error'
 type DeleteStatus = 'idle' | 'confirm' | 'loading' | 'success' | 'error'
 
-interface FetchResponse {
+interface StepResponse {
   ok: boolean
-  persistEnabled?: boolean
-  persistSkipped?: boolean
-  persistSkipReason?: string
-  results?: { key: string; status: number; isOk: boolean; error?: string }[]
-  data?: Record<string, unknown>
+  step: number
+  key?: string
+  status?: number
+  isOk?: boolean
+  error?: string
+  done?: boolean
 }
+
 
 export default function FetchDataPage() {
   const { logout } = useOutletContext<AuthOutletContext>() ?? {}
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle')
   const [refreshMessage, setRefreshMessage] = useState('')
+  const [refreshProgress, setRefreshProgress] = useState<{ current: number; total: number; key?: string } | null>(null)
   const [fetchedData, setFetchedData] = useState<Record<string, unknown> | null>(null)
   const [deleteStatus, setDeleteStatus] = useState<DeleteStatus>('idle')
   const [deleteMessage, setDeleteMessage] = useState('')
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
 
+  function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+  }
+
   async function handleRefresh() {
     setRefreshStatus('loading')
     setRefreshMessage('')
     setFetchedData(null)
+    setRefreshProgress(null)
+    const failed: { key: string; status: number; error?: string }[] = []
     try {
-      const res = await fetch('/api/fetch', { method: 'POST' })
-      const text = await res.text()
-      if (res.ok) {
-        setRefreshStatus('success')
+      for (let step = 1; step <= TOTAL_STEPS; step++) {
+        setRefreshProgress({
+          current: step,
+          total: TOTAL_STEPS,
+          key: step <= 8 ? ['global', 'topCoins', 'bitcoinChart', 'trending', 'categories', 'coinbaseSpot', 'krakenTicker', 'binancePrice'][step - 1] : 'derived',
+        })
+        const res = await fetch('/api/fetch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ step }),
+        })
+        const text = await res.text()
+        if (!res.ok) {
+          setRefreshStatus('error')
+          setRefreshMessage(text || `Error ${res.status}`)
+          return
+        }
+        let stepBody: StepResponse
         try {
-          const body: FetchResponse = JSON.parse(text)
-          const failed = body.results?.filter((r) => !r.isOk) ?? []
-          if (body.persistSkipped && body.persistSkipReason) {
-            setRefreshMessage(`Data refreshed. Persistence skipped: ${body.persistSkipReason}`)
-          } else if (failed.length > 0) {
-            const failedSummary = failed
-              .map((r) => `${r.key} (${r.status}${r.error ? `: ${r.error}` : ''})`)
-              .join('; ')
-            setRefreshMessage(
-              `Data refreshed with ${body.results!.length - failed.length}/${body.results!.length} sources. Failed: ${failedSummary}`
-            )
-          } else {
-            setRefreshMessage('Data refreshed.')
-          }
-          if (body.data && Object.keys(body.data).length > 0) {
-            setFetchedData(body.data)
-            setExpandedKey(Object.keys(body.data)[0] ?? null)
+          stepBody = JSON.parse(text) as StepResponse
+        } catch {
+          setRefreshStatus('error')
+          setRefreshMessage('Invalid response from server.')
+          return
+        }
+        if (!stepBody.ok && stepBody.key) {
+          failed.push({
+            key: stepBody.key,
+            status: stepBody.status ?? 0,
+            error: stepBody.error,
+          })
+        }
+        if (stepBody.done) break
+        // Pause between CoinGecko steps (1–5) to avoid rate limit; client paces
+        if (step >= 1 && step <= 4) await sleep(PAUSE_MS_BETWEEN_COINGECKO)
+      }
+      setRefreshProgress(null)
+      setRefreshStatus('success')
+      if (failed.length > 0) {
+        const failedSummary = failed.map((r) => `${r.key} (${r.status}${r.error ? `: ${r.error}` : ''})`).join('; ')
+        setRefreshMessage(`Data refreshed with ${TOTAL_STEPS - failed.length}/${TOTAL_STEPS} steps. Failed: ${failedSummary}`)
+      } else {
+        setRefreshMessage('Data refreshed.')
+      }
+      const dataRes = await fetch('/api/data', { method: 'GET' })
+      if (dataRes.ok) {
+        try {
+          const dataBody = (await dataRes.json()) as { data?: Record<string, unknown> }
+          if (dataBody.data && Object.keys(dataBody.data).length > 0) {
+            setFetchedData(dataBody.data)
+            setExpandedKey(Object.keys(dataBody.data)[0] ?? null)
           }
         } catch {
-          setRefreshMessage('Data refreshed.')
+          // ignore
         }
-      } else {
-        setRefreshStatus('error')
-        setRefreshMessage(res.status === 404 ? API_NOT_IMPLEMENTED : text || `Error ${res.status}`)
       }
     } catch (e) {
+      setRefreshProgress(null)
       setRefreshStatus('error')
       setRefreshMessage(API_NOT_IMPLEMENTED)
     }
@@ -76,7 +114,12 @@ export default function FetchDataPage() {
       const text = await res.text()
       if (res.ok) {
         setDeleteStatus('success')
-        setDeleteMessage(text || 'Data deleted.')
+        try {
+          const body = JSON.parse(text) as { deleted?: number }
+          setDeleteMessage(body.deleted != null ? `Data deleted (${body.deleted} blobs).` : 'Data deleted.')
+        } catch {
+          setDeleteMessage('Data deleted.')
+        }
         setDeleteConfirmText('')
       } else {
         setDeleteStatus('error')
@@ -108,7 +151,20 @@ export default function FetchDataPage() {
           >
             {refreshStatus === 'loading' ? 'Refreshing…' : 'Refresh data'}
           </button>
-          {refreshStatus === 'loading' && <p className="status loading">Loading…</p>}
+          {refreshStatus === 'loading' && (
+            <>
+              <p className="status loading">
+                {refreshProgress
+                  ? `Fetching ${refreshProgress.current}/${refreshProgress.total}${refreshProgress.key ? ` (${refreshProgress.key})` : ''}…`
+                  : 'Loading…'}
+              </p>
+              {refreshProgress && refreshProgress.current <= 4 && (
+                <p className="muted" style={{ marginTop: '0.25rem', fontSize: '0.9rem' }}>
+                  Pausing ${PAUSE_MS_BETWEEN_COINGECKO/1000}s between CoinGecko calls to avoid rate limit…
+                </p>
+              )}
+            </>
+          )}
           {refreshStatus === 'success' && <p className="status success">{refreshMessage}</p>}
           {refreshStatus === 'error' && <p className="status error">{refreshMessage}</p>}
         </div>
